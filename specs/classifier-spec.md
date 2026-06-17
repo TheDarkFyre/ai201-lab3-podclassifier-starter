@@ -91,10 +91,12 @@ the format below:" followed by the output format you chose.
 **What output format should you request from the LLM?**
 
 ```
-[blank — you need to parse the response in classify_episode(). What format
-makes parsing reliable? Think about: a single label on its own line?
-A structured format like "Label: X / Reasoning: Y"? JSON?
-What are the tradeoffs?]
+Request two clearly labeled lines:
+
+Label: <label>
+Reasoning: <one sentence>
+
+where <label> is exactly one of the four valid labels. This is easy to parse reliably — strip the response, split on newlines, and find the line starting with "Label:" to extract the value. Chosen over JSON because the OpenAI-compatible client doesn't support prefill, so JSON compliance can't be enforced; chosen over a bare label because the Reasoning line helps debug misclassifications without adding parsing complexity.
 ```
 
 ---
@@ -102,8 +104,9 @@ What are the tradeoffs?]
 **Edge cases to handle in the prompt:**
 
 ```
-[blank — what if labeled_examples is empty? What if the description is very
-short? How does your prompt handle these?]
+- Empty labeled_examples: skip the examples section entirely and only include the task instruction and the new episode. The model will rely on the label definitions alone — accuracy may drop, but the prompt is still valid and classify_episode() handles a degraded result.
+- Very short or blank description: include it as-is; do not pad or raise. The LLM may return "unknown" — that is caught by the validation step.
+- Very long description: include it as-is. If token limits become a concern, truncate to a fixed character count before inserting.
 ```
 
 ---
@@ -159,9 +162,16 @@ Extract the response text from:
 **Step 3 — Parse the response:**
 
 ```
-[blank — how do you extract the label and reasoning from the LLM's text output?
-What string operations or parsing logic do you need?
-This depends on the output format you chose in build_few_shot_prompt.]
+Split the response on newlines and scan for lines starting with "Label:" and "Reasoning:" (case-insensitive). Extract the value after the colon and strip whitespace. If no "Label:" line is found, set label = None (caught by Step 4). 
+
+Example:
+  label = None
+  reasoning = ""
+  for line in response_text.strip().splitlines():
+      if line.lower().startswith("label:"):
+          label = line.split(":", 1)[1].strip().lower()
+      elif line.lower().startswith("reasoning:"):
+          reasoning = line.split(":", 1)[1].strip()
 ```
 
 ---
@@ -169,8 +179,10 @@ This depends on the output format you chose in build_few_shot_prompt.]
 **Step 4 — Validate the label:**
 
 ```
-[blank — what do you do if the LLM returns a label that isn't in VALID_LABELS?
-What should label be set to?]
+Check whether label is in VALID_LABELS. If not — including if label is still None from a failed parse — set label = "unknown". Do not raise; the evaluation loop expects a dict, not an exception.
+
+  if label not in VALID_LABELS:
+      label = "unknown"
 ```
 
 ---
@@ -178,9 +190,11 @@ What should label be set to?]
 **Step 5 — Handle errors gracefully:**
 
 ```
-[blank — what could go wrong? (Network error? Unparseable response?)
-What should the function return if something fails?
-Hint: the evaluation loop runs 20 calls — one bad response shouldn't crash everything.]
+Wrap the entire LLM call and parse block in a try/except Exception block.
+Risks: network timeout, API quota error, AttributeError on the response object, or a response that produces no parseable label. On any exception, return the safe fallback immediately so the evaluation loop continues:
+
+  except Exception as e:
+      return {"label": "unknown", "reasoning": f"error: {e}"}
 ```
 
 ---
@@ -213,24 +227,34 @@ any labels you're unsure about. Annotation quality is part of the lab.
 **Test: what does the raw LLM response look like for one episode?**
 
 ```
-Episode tested: [title]
-Raw response text: [paste it here]
+Episode tested: Dr. Priya Nair on the Science of Sleep Deprivation
+Raw response text:
+Label: interview
+Reasoning: This episode features a conversation between the host and a single guest, Dr. Priya Nair, discussing her research and expertise on sleep and the brain.
 ```
 
 **How did you parse the label out of the response?**
 
 ```
-[describe the string operations — strip, split, lower, etc.]
+Strip the response, split on newlines, iterate. For each line, check
+line.lower().startswith("label:") — if so, split on ":" once, take the
+right side, strip whitespace, and lowercase it. Same pattern for
+"reasoning:". This gives a clean label string ready to check against
+VALID_LABELS.
 ```
 
 **Did any episodes return `"unknown"`? If so, why?**
 
 ```
-[yes / no — if yes, what did the raw response look like?]
+No — the model returned a valid label on the first test. The "unknown"
+fallback exists for cases where the model omits the "Label:" line or
+returns a value not in VALID_LABELS.
 ```
 
 **One thing about the output format that surprised you:**
 
 ```
-[your answer here]
+The Reasoning line was longer than expected — a full sentence rather than
+a brief phrase. The two-line format (Label / Reasoning) parsed cleanly
+with no ambiguity, which confirmed the choice over bare-label or JSON output.
 ```

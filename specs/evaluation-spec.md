@@ -44,8 +44,11 @@ Returns the fraction of predictions that exactly match the ground truth.
 **Formula:**
 
 ```
-[blank — write out the accuracy formula in plain English.
- What counts as "correct"? What do you divide by?]
+accuracy = (number of positions where predictions[i] == ground_truth[i]) / len(ground_truth)
+
+"Correct" means an exact string match at the same index. Divide by the
+total number of episodes (length of either list — they must be the same
+length).
 ```
 
 ---
@@ -53,10 +56,9 @@ Returns the fraction of predictions that exactly match the ground truth.
 **Step-by-step logic:**
 
 ```
-[blank — describe the steps your code will take.
- 1. ...
- 2. ...
- 3. ...]
+1. If both lists are empty, return 0.0 (see edge case below).
+2. Count the number of indices i where predictions[i] == ground_truth[i].
+3. Divide that count by len(ground_truth) and return the float.
 ```
 
 ---
@@ -64,7 +66,10 @@ Returns the fraction of predictions that exactly match the ground truth.
 **Edge case — what if both lists are empty?**
 
 ```
-[blank — what should the function return? Why?]
+Return 0.0. There are no episodes to score, so accuracy is undefined;
+0.0 is a safe, unambiguous sentinel that won't mislead downstream display
+or comparison logic. Dividing 0 / 0 would raise a ZeroDivisionError, so
+guard explicitly.
 ```
 
 ---
@@ -75,7 +80,13 @@ Returns the fraction of predictions that exactly match the ground truth.
 predictions  = ["interview", "solo", "panel", "interview"]
 ground_truth = ["interview", "solo", "solo",  "narrative"]
 
-[blank — what does compute_accuracy() return for these inputs? Show your work.]
+index 0: "interview" == "interview" → correct
+index 1: "solo"      == "solo"      → correct
+index 2: "panel"     == "solo"      → wrong
+index 3: "interview" == "narrative" → wrong
+
+correct = 2, total = 4
+compute_accuracy() returns 2 / 4 = 0.5
 ```
 
 ---
@@ -113,8 +124,10 @@ A `dict` keyed by label. Each value is a dict with three keys:
 **What does "correct" mean for a given class?**
 
 ```
-[blank — be precise. When does an episode count as correctly classified
- for the "interview" class, for example?]
+An episode counts as correct for class C when ground_truth[i] == C AND
+predictions[i] == C. In other words: the episode truly belongs to C, and
+the classifier also said C. Episodes where ground_truth[i] != C are
+ignored entirely when computing C's stats.
 ```
 
 ---
@@ -122,7 +135,9 @@ A `dict` keyed by label. Each value is a dict with three keys:
 **What does "total" mean for a given class?**
 
 ```
-[blank — is "total" the total number of predictions, or something more specific?]
+"total" is the number of episodes whose ground-truth label is C — not the
+total number of predictions overall. It is the denominator for that class's
+accuracy: how many episodes the classifier had the chance to get right for C.
 ```
 
 ---
@@ -130,12 +145,14 @@ A `dict` keyed by label. Each value is a dict with three keys:
 **Step-by-step logic:**
 
 ```
-[blank — describe the steps your code will take.
- 1. Initialize ...
- 2. Loop over ...
- 3. For each pair (predicted, truth) ...
- 4. After the loop ...
- 5. Return ...]
+1. Initialize a counts dict: for each label in VALID_LABELS, set
+   correct=0 and total=0.
+2. Loop over zip(predictions, ground_truth) to get each (predicted, truth) pair.
+3. For each pair: increment counts[truth]["total"] by 1.
+   If predicted == truth, also increment counts[truth]["correct"] by 1.
+4. After the loop, compute accuracy for each label:
+   accuracy = correct / total if total > 0 else 0.0
+5. Return the dict with all four labels filled in.
 ```
 
 ---
@@ -143,8 +160,10 @@ A `dict` keyed by label. Each value is a dict with three keys:
 **Edge case — what if a class has no examples in ground_truth (total == 0)?**
 
 ```
-[blank — what should accuracy be set to? Why?
- Hint: look at the docstring in evaluate.py.]
+Set accuracy to 0.0. Division by zero is undefined, and 0.0 is the
+value the docstring specifies for this case. It signals "no data" without
+crashing — the bar chart in format_evaluation_report() will simply render
+as empty for that class.
 ```
 
 ---
@@ -155,14 +174,18 @@ A `dict` keyed by label. Each value is a dict with three keys:
 predictions  = ["interview", "interview", "solo", "panel", "panel"]
 ground_truth = ["interview", "solo",      "solo", "panel", "narrative"]
 
-[blank — fill in the per-class results table below]
+idx 0: truth=interview, pred=interview → interview correct+1, total+1
+idx 1: truth=solo,      pred=interview → solo      correct+0, total+1
+idx 2: truth=solo,      pred=solo      → solo      correct+1, total+1
+idx 3: truth=panel,     pred=panel     → panel     correct+1, total+1
+idx 4: truth=narrative, pred=panel     → narrative correct+0, total+1
 
 label       correct  total  accuracy
 ----------  -------  -----  --------
-interview   [blank]  [blank]  [blank]
-solo        [blank]  [blank]  [blank]
-panel       [blank]  [blank]  [blank]
-narrative   [blank]  [blank]  [blank]
+interview       1      1      1.0
+solo            1      2      0.5
+panel           1      1      1.0
+narrative       0      1      0.0
 ```
 
 ---
